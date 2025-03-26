@@ -60,9 +60,11 @@ const App = () => {
     setWinner(null);
   };
 
+  // Updated function to match the card image naming convention you used
   const renderCardImage = (card) => {
-    const [rank, suit] = card.split('');
-    return `/assets/cards/${rank}${suit}.png`; // Assuming images are stored in assets folder
+    const rank = card.slice(0, card.length - 1); // Extract the rank (e.g., '10', 'A')
+    const suit = card.slice(-1).toLowerCase(); // Extract the suit (e.g., '♠' -> 'spades')
+    return `/assets/cards/${rank}_of_${suit}.png`; // '10_of_spades.png', 'A_of_hearts.png'
   };
 
   if (!joined) {
@@ -97,7 +99,7 @@ const App = () => {
           <img
             key={i}
             className="card"
-            src={renderCardImage(card)}
+            src={renderCardImage(card)}  // Dynamically load the card images
             alt={card}
             onClick={() => playCard(card)}
           />
@@ -110,7 +112,7 @@ const App = () => {
           <img
             key={i}
             className="card"
-            src={renderCardImage(card)}
+            src={renderCardImage(card)}  // Dynamically load the card images
             alt={card}
           />
         ))}
@@ -142,4 +144,5 @@ const App = () => {
 };
 
 export default App;
+
 
