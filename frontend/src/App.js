@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import io from 'socket.io-client';
 
-const socket = io('http://localhost:5000'); // Replace with backend URL
+const socket = io('https://omigame-8izt.onrender.com'); // Replace with backend URL
 
 const App = () => {
   const [roomCode, setRoomCode] = useState('');
