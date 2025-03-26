@@ -1,4 +1,5 @@
 
+
 import React, { useEffect, useState } from 'react';
 import io from 'socket.io-client';
 import './App.css';
@@ -20,6 +21,8 @@ const App = () => {
   const [winner, setWinner] = useState(null);
   const [playerName, setPlayerName] = useState('');
   const [userName, setUserName] = useState('');
+
+  const [teams, setTeams] = useState([]); // To manage team assignments
 
   useEffect(() => {
     socket.on('update-players', setPlayers);
@@ -60,12 +63,25 @@ const App = () => {
     setWinner(null);
   };
 
-  // Updated function to match the card image naming convention you used
   const renderCardImage = (card) => {
-    const rank = card.slice(0, card.length - 1); // Extract the rank (e.g., '10', 'A')
-    const suit = card.slice(-1).toLowerCase(); // Extract the suit (e.g., '♠' -> 'spades')
+    const rank = card.slice(0, card.length - 1);
+    const suit = card.slice(-1).toLowerCase();
     return `/assets/cards/${rank}_of_${suit}.png`; // '10_of_spades.png', 'A_of_hearts.png'
   };
+
+  const assignTeams = (players) => {
+    // Assign teams in pairs (e.g., 1 and 3 -> Team A, 2 and 4 -> Team B)
+    setTeams([
+      { team: 'A', members: [players[0], players[2]] },
+      { team: 'B', members: [players[1], players[3]] },
+    ]);
+  };
+
+  useEffect(() => {
+    if (players.length === 4) {
+      assignTeams(players);
+    }
+  }, [players]);
 
   if (!joined) {
     return (
@@ -89,9 +105,24 @@ const App = () => {
   return (
     <div className="game">
       <h2>Room: {roomCode}</h2>
-      <p>Players: {players.join(', ')}</p>
+      <h3>Players: {players.join(', ')}</h3>
       <p>Trump Suit: {trump || 'Not selected yet'}</p>
       <p>Current Turn: {currentTurn}</p>
+
+      {/* Display player names in positions (top, right, bottom, left) */}
+      <div className="player-info">
+        {players.map((player, idx) => (
+          <div
+            key={idx}
+            className={`player-name player-${idx + 1}`}
+            style={{
+              color: teams[0].members.includes(player) ? 'blue' : 'green', // Assign colors based on team
+            }}
+          >
+            {player}
+          </div>
+        ))}
+      </div>
 
       <div className="hand">
         <h3>Your Hand:</h3>
@@ -105,6 +136,16 @@ const App = () => {
           />
         ))}
       </div>
+
+      {/* Only allow the first player to call the trump */}
+      {currentTurn === playerName && !trump && (
+        <div>
+          <h4>Call Trump:</h4>
+          {suits.map(suit => (
+            <button key={suit} onClick={() => callTrump(suit)}>{suit}</button>
+          ))}
+        </div>
+      )}
 
       <div className="table">
         <h3>Cards on Table:</h3>
@@ -128,15 +169,6 @@ const App = () => {
         <div className="winner">
           <h2>{winner} wins the game! 🎉</h2>
           <button onClick={resetGame}>Play Again</button>
-        </div>
-      )}
-
-      {!trump && (
-        <div>
-          <h4>Call Trump:</h4>
-          {suits.map(suit => (
-            <button key={suit} onClick={() => callTrump(suit)}>{suit}</button>
-          ))}
         </div>
       )}
     </div>
