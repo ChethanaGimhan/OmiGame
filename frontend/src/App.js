@@ -1,9 +1,11 @@
+
 import React, { useEffect, useState } from 'react';
 import io from 'socket.io-client';
+import './App.css';
 
-const socket = io('https://omigame-8izt.onrender.com'); // Replace with live backend URL
+const socket = io('https://omigame-8izt.onrender.com'); // Replace with your deployed backend URL
 
-const suits = ['♠', '♥', '♦', '♣'];
+const suits = ['spades', 'hearts', 'diamonds', 'clubs'];
 const ranks = ['7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
 
 const App = () => {
@@ -16,6 +18,8 @@ const App = () => {
   const [tableCards, setTableCards] = useState([]);
   const [score, setScore] = useState({ teamA: 0, teamB: 0 });
   const [winner, setWinner] = useState(null);
+  const [playerName, setPlayerName] = useState('');
+  const [userName, setUserName] = useState('');
 
   useEffect(() => {
     socket.on('update-players', setPlayers);
@@ -32,7 +36,13 @@ const App = () => {
   }, []);
 
   const joinRoom = () => {
-    socket.emit('join-room', roomCode);
+    if (!playerName) {
+      alert('Please enter your name to play!');
+      return;
+    }
+
+    setUserName(playerName);
+    socket.emit('join-room', roomCode, playerName);
     setJoined(true);
   };
 
@@ -50,43 +60,70 @@ const App = () => {
     setWinner(null);
   };
 
+  const renderCardImage = (card) => {
+    const [rank, suit] = card.split('');
+    return `/assets/cards/${rank}${suit}.png`; // Assuming images are stored in assets folder
+  };
+
   if (!joined) {
     return (
-      <div style={{ padding: 30, textAlign: 'center' }}>
+      <div className="lobby">
         <h1>Join Omi Room</h1>
-        <input value={roomCode} onChange={(e) => setRoomCode(e.target.value)} placeholder="Enter Room Code" />
-        <button onClick={joinRoom}>Join</button>
+        <input
+          value={roomCode}
+          onChange={(e) => setRoomCode(e.target.value)}
+          placeholder="Enter Room Code"
+        />
+        <input
+          value={playerName}
+          onChange={(e) => setPlayerName(e.target.value)}
+          placeholder="Enter Your Name"
+        />
+        <button onClick={joinRoom}>Join Game</button>
       </div>
     );
   }
 
   return (
-    <div style={{ padding: 30 }}>
+    <div className="game">
       <h2>Room: {roomCode}</h2>
       <p>Players: {players.join(', ')}</p>
       <p>Trump Suit: {trump || 'Not selected yet'}</p>
       <p>Current Turn: {currentTurn}</p>
 
-      <h3>Your Hand:</h3>
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+      <div className="hand">
+        <h3>Your Hand:</h3>
         {hand.map((card, i) => (
-          <button key={i} onClick={() => playCard(card)}>{card}</button>
+          <img
+            key={i}
+            className="card"
+            src={renderCardImage(card)}
+            alt={card}
+            onClick={() => playCard(card)}
+          />
         ))}
       </div>
 
-      <h3>Cards on Table:</h3>
-      <div style={{ display: 'flex', gap: 10 }}>
+      <div className="table">
+        <h3>Cards on Table:</h3>
         {tableCards.map((card, i) => (
-          <div key={i} style={{ border: '1px solid black', padding: 10 }}>{card}</div>
+          <img
+            key={i}
+            className="card"
+            src={renderCardImage(card)}
+            alt={card}
+          />
         ))}
       </div>
 
-      <h3>Score:</h3>
-      <p>Team A: {score.teamA} pts</p>
-      <p>Team B: {score.teamB} pts</p>
+      <div className="scoreboard">
+        <h3>Score:</h3>
+        <p>Team A: {score.teamA} pts</p>
+        <p>Team B: {score.teamB} pts</p>
+      </div>
 
       {winner && (
-        <div style={{ marginTop: 20, padding: 10, background: 'lightgreen' }}>
+        <div className="winner">
           <h2>{winner} wins the game! 🎉</h2>
           <button onClick={resetGame}>Play Again</button>
         </div>
