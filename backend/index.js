@@ -6,9 +6,13 @@ const cors = require('cors');
 const app = express();
 app.use(cors());
 const server = http.createServer(app);
-const io = socketIO(server, { cors: { origin: '*' } });
+const io = socketIO(server, {
+  cors: {
+    origin: '*',
+  },
+});
 
-const PORT = process.env.PORT || 5000;
+const PORT = 5000;
 
 const suits = ['♠', '♥', '♦', '♣'];
 const ranks = ['7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
@@ -17,15 +21,26 @@ const fullDeck = () => suits.flatMap(suit => ranks.map(rank => `${rank}${suit}`)
 let rooms = {};
 
 io.on('connection', (socket) => {
-  console.log('A user connected', socket.id);
+  console.log('New client connected:', socket.id);
 
   socket.on('join-room', (roomCode) => {
     socket.join(roomCode);
-    if (!rooms[roomCode]) rooms[roomCode] = { players: [], deck: [], hands: {}, turnIndex: 0, trump: null, scores: { A: 0, B: 0 } };
-    
-    const room = rooms[roomCode];
-    room.players.push(socket.id);
+    if (!rooms[roomCode]) {
+      rooms[roomCode] = {
+        players: [],
+        trump: null,
+        hands: {},
+        table: [],
+        scores: { A: 0, B: 0 },
+        roundScore: { A: 0, B: 0 },
+        turnIndex: 0,
+      };
+    }
 
+    const room = rooms[roomCode];
+    if (room.players.length >= 4) return;
+
+    room.players.push(socket.id);
     io.to(roomCode).emit('update-players', room.players);
 
     if (room.players.length === 4) {
@@ -43,27 +58,34 @@ io.on('connection', (socket) => {
 
   socket.on('play-card', (card) => {
     const roomCode = getRoom(socket);
-    if (!roomCode) return;
     const room = rooms[roomCode];
-    room.deck.push(card);
-    io.to(roomCode).emit('update-deck', room.deck);
+    room.table.push({ player: socket.id, card });
+    io.to(roomCode).emit('update-table', room.table.map(x => x.card));
 
-    if (room.deck.length === 4) {
+    if (room.table.length === 4) {
       const winner = determineTrickWinner(room);
       room.turnIndex = room.players.indexOf(winner);
-      room.deck = [];
+      room.table = [];
 
       const team = getTeam(winner, room);
-      if (room.scores[team] === 8) room.scores[team] += 3; // Clean sweep (extra points)
-      else room.scores[team] += 2;
+      room.roundScore[team]++;
 
-      io.to(roomCode).emit('update-scores', room.scores);
+      if (room.roundScore[team] >= 5) {
+        const isTrumpCaller = team === getTeam(room.players[0], room);
+        const roundPoints = room.roundScore[team] === 8 ? 3 : isTrumpCaller ? 1 : 2;
+        room.scores[team] += roundPoints;
+        io.to(roomCode).emit('update-score', {
+          teamA: room.scores.A,
+          teamB: room.scores.B,
+        });
 
-      if (room.scores[team] >= 10) {
-        io.to(roomCode).emit('game-winner', `Team ${team} wins!`);
-        resetGame(roomCode);
+        if (room.scores[team] >= 10) {
+          io.to(roomCode).emit('game-winner', `Team ${team}`);
+        }
+
+        dealCards(roomCode);
+        return;
       }
-      return;
     }
 
     room.turnIndex = (room.turnIndex + 1) % 4;
@@ -73,30 +95,26 @@ io.on('connection', (socket) => {
   socket.on('reset-game', () => {
     const roomCode = getRoom(socket);
     if (!roomCode) return;
-    resetGame(roomCode);
+    rooms[roomCode].scores = { A: 0, B: 0 };
+    dealCards(roomCode);
   });
 
   socket.on('disconnect', () => {
-    console.log('User disconnected', socket.id);
-    for (const roomCode in rooms) {
-      const room = rooms[roomCode];
-      room.players = room.players.filter(player => player !== socket.id);
-      if (room.players.length === 0) delete rooms[roomCode];
+    console.log('Client disconnected:', socket.id);
+    for (const code in rooms) {
+      const room = rooms[code];
+      room.players = room.players.filter(p => p !== socket.id);
+      if (room.players.length === 0) delete rooms[code];
     }
   });
 });
-
-function resetGame(roomCode) {
-  const room = rooms[roomCode];
-  room.scores = { A: 0, B: 0 };
-  room.trump = null;
-  dealCards(roomCode);
-}
 
 function dealCards(roomCode) {
   const room = rooms[roomCode];
   const deck = fullDeck().sort(() => Math.random() - 0.5);
   room.hands = {};
+  room.trump = null;
+  room.roundScore = { A: 0, B: 0 };
 
   for (let i = 0; i < 4; i++) {
     room.hands[room.players[i]] = deck.slice(i * 8, (i + 1) * 8);
@@ -108,14 +126,14 @@ function dealCards(roomCode) {
 }
 
 function determineTrickWinner(room) {
-  const leadSuit = room.deck[0].slice(-1);
+  const leadSuit = room.table[0].card.slice(-1);
   const trump = room.trump;
 
-  const sorted = [...room.deck].sort((a, b) => {
-    const suitA = a.slice(-1);
-    const suitB = b.slice(-1);
-    const rankA = ranks.indexOf(a.slice(0, -1));
-    const rankB = ranks.indexOf(b.slice(0, -1));
+  const sorted = [...room.table].sort((a, b) => {
+    const suitA = a.card.slice(-1);
+    const suitB = b.card.slice(-1);
+    const rankA = ranks.indexOf(a.card.slice(0, -1));
+    const rankB = ranks.indexOf(b.card.slice(0, -1));
 
     if (suitA === trump && suitB !== trump) return -1;
     if (suitA !== trump && suitB === trump) return 1;
@@ -138,6 +156,4 @@ function getRoom(socket) {
   return roomsList.find(r => r !== socket.id);
 }
 
-server.listen(PORT, () => {
-  console.log(`Omi server running on port ${PORT}`);
-});
+server.listen(PORT, () => console.log(`Omi server running on port ${PORT}`));
