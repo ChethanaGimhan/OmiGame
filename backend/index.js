@@ -14,20 +14,19 @@ const io = socketIO(server, {
 
 const PORT = 5000;
 
-const suits = ['♠', '♥', '♦', '♣'];
-const ranks = ['7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
-const fullDeck = () => suits.flatMap(suit => ranks.map(rank => `${rank}${suit}`));
-
 let rooms = {};
 
 io.on('connection', (socket) => {
   console.log('New client connected:', socket.id);
 
-  socket.on('join-room', (roomCode) => {
+  socket.on('join-room', (roomCode, playerName) => {
+    socket.playerName = playerName;  // Store player's name
     socket.join(roomCode);
+
     if (!rooms[roomCode]) {
       rooms[roomCode] = {
         players: [],
+        playerNames: [],
         trump: null,
         hands: {},
         table: [],
@@ -41,7 +40,8 @@ io.on('connection', (socket) => {
     if (room.players.length >= 4) return;
 
     room.players.push(socket.id);
-    io.to(roomCode).emit('update-players', room.players);
+    room.playerNames.push(playerName);  // Store player name
+    io.to(roomCode).emit('update-players', room.playerNames);  // Update all players with new list of player names
 
     if (room.players.length === 4) {
       dealCards(roomCode);
@@ -53,18 +53,18 @@ io.on('connection', (socket) => {
     if (!roomCode) return;
     rooms[roomCode].trump = suit;
     io.to(roomCode).emit('trump-called', suit);
-    io.to(roomCode).emit('update-turn', rooms[roomCode].players[rooms[roomCode].turnIndex]);
+    io.to(roomCode).emit('update-turn', rooms[roomCode].playerNames[rooms[roomCode].turnIndex]);
   });
 
   socket.on('play-card', (card) => {
     const roomCode = getRoom(socket);
     const room = rooms[roomCode];
-    room.table.push({ player: socket.id, card });
+    room.table.push({ player: socket.playerName, card });  // Use player's name instead of ID
     io.to(roomCode).emit('update-table', room.table.map(x => x.card));
 
     if (room.table.length === 4) {
       const winner = determineTrickWinner(room);
-      room.turnIndex = room.players.indexOf(winner);
+      room.turnIndex = room.playerNames.indexOf(winner);
       room.table = [];
 
       const team = getTeam(winner, room);
@@ -89,7 +89,7 @@ io.on('connection', (socket) => {
     }
 
     room.turnIndex = (room.turnIndex + 1) % 4;
-    io.to(roomCode).emit('update-turn', room.players[room.turnIndex]);
+    io.to(roomCode).emit('update-turn', room.playerNames[room.turnIndex]);
   });
 
   socket.on('reset-game', () => {
@@ -103,7 +103,11 @@ io.on('connection', (socket) => {
     console.log('Client disconnected:', socket.id);
     for (const code in rooms) {
       const room = rooms[code];
-      room.players = room.players.filter(p => p !== socket.id);
+      const idx = room.players.indexOf(socket.id);
+      if (idx !== -1) {
+        room.players.splice(idx, 1);
+        room.playerNames.splice(idx, 1);  // Remove player's name
+      }
       if (room.players.length === 0) delete rooms[code];
     }
   });
